@@ -1,8 +1,33 @@
 import os
 from dotenv import load_dotenv
 from google import genai
-from google.genai.chats import GenerateContentResponse
+from google.genai import types
 import argparse
+
+
+def generate_content(client, messages):
+    return client.models.generate_content(model="gemini-2.5-flash", contents=messages)
+
+
+def set_parser(description, arg):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(arg, type=str, help="User prompt")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    return parser
+
+
+def print_response(response, args):
+    if not response.usage_metadata:
+        raise RuntimeError("Response malformed")
+
+    if args.verbose:
+        print(f"User prompt: {args.user_prompt}")
+        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+
+    print(response.text)
 
 
 def main():
@@ -16,21 +41,13 @@ def main():
 
     client = genai.Client(api_key=api_key)
 
-    parser = argparse.ArgumentParser(description="Chatbot")
-    parser.add_argument("user_prompt", type=str, help="User prompt")
-    args = parser.parse_args()
-    # Now we can access `args.user_prompt`
-    content: GenerateContentResponse = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=args.user_prompt,
-    )
-    if not content.usage_metadata:
-        raise RuntimeError("Response malformed")
+    args = set_parser("Chatbot", "user_prompt").parse_args()
 
-    print(f"Prompt tokens: {content.usage_metadata.prompt_token_count}")
-    print(f"Response tokens: {content.usage_metadata.candidates_token_count}")
+    messages: list[types.Content] = [
+        types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
+    ]
 
-    print(content.text)
+    print_response(generate_content(client, messages), args)
 
 
 if __name__ == "__main__":
