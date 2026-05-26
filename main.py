@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import argparse
+from prompts import system_prompt
+from functions.call_function import available_functions, call_function
 
 
 def get_ai_client(api_key):
@@ -24,7 +26,13 @@ def get_parser():
 
 
 def generate_content(client, messages):
-    return client.models.generate_content(model="gemini-2.5-flash", contents=messages)
+    return client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=messages,
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=system_prompt
+        ),
+    )
 
 
 def print_response(response, parser_args):
@@ -36,7 +44,22 @@ def print_response(response, parser_args):
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
 
-    print(response.text)
+    if response.function_calls:
+        function_responses: list[types.Part] = []
+        for function_call in response.function_calls:
+            result = call_function(function_call, parser_args.verbose)
+            if (
+                not result.parts
+                or not result.parts[0].function_response
+                or not result.parts[0].function_response.response
+            ):
+                raise RuntimeError(f"Empty function response for {function_call.name}")
+            if parser_args.verbose:
+                print(f"-> {result.parts[0].function_response.response}")
+            function_responses.append(result.parts[0])
+    else:
+        print("Response:")
+        print(response.text)
 
 
 def main():
